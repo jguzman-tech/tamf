@@ -8,11 +8,13 @@ based on the value of coverage (VoC) and existing evidence of coverage (EoC) of
 that grid block.
 
 # Setup
+Core functionality was wrapped into a python pip module. Below is how you would
+install.
 ## git clone
 	git clone https://github.com/jguzman-tech/tamf.git
 ## enter directory
 	cd ./tamf
 ## install via pip
-	pip install .
+	python3 ./setup.py install
 # Usage
 TBD
