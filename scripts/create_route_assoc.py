@@ -1,5 +1,6 @@
 import pandas as pd
 import pickle
+import numpy as np
 
 # might as well create the route_assoc here!
 # need to combine columns in:
@@ -16,6 +17,7 @@ if __name__ == '__main__':
     route_assoc = dict()
     # result_df = pd.DataFrame(columns=["id", "contains_route", "route_ids", "grid_polygon", "verizon_sh", "tmobile_sh", "att_sh", "sprint_sh", "verizon_fcc", "tmobile_fcc", "att_fcc", "sprint_fcc", "verizon_eoc", "tmobile_eoc", "att_eoc", "sprint_eoc", "UR10", "b_type", "HOUSING10", "POP10"])
 
+    count_nans = 0
     for i, row in route_df.iterrows():
         if row['contains_route']:
             route_list = route_df['route_ids'][i]
@@ -42,6 +44,9 @@ if __name__ == '__main__':
                           "b_type":grid_df["b_type"][my_index],
                           "HOUSING10":grid_df["HOUSING10"][my_index],
                           "POP10":grid_df["POP10"][my_index]}
+            if np.isnan(inner_dict['POP10']):
+                inner_dict['POP10'] = 0.0
+                count_nans += 1
             for route_id in route_list.split(','):
                 if route_id not in route_assoc:
                     route_assoc[route_id] = [inner_dict]
@@ -49,4 +54,6 @@ if __name__ == '__main__':
                     route_assoc[route_id].append(inner_dict)
         if i % 2000 == 0:
             print(f"{i} out of {len(route_df)}")
+    print(f"found {count_nans} nans")
     pickle.dump(route_assoc, open('./data/new_route_assoc.pkl', 'wb'))
+    print(f"wrote: ./data/new_route_assoc.pkl")
