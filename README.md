@@ -15,6 +15,9 @@ install.
 ## enter directory
 	cd ./tamf
 ## install via pip
-	python3 ./setup.py install
+	python -m pip install --editable .
+There may be more updates in the near future, using the --editable option lets
+you edit the files and still use pip. Issues can arise otherwise if you make
+significant edits to a pip package without re-installing.
 # Usage
 TBD
