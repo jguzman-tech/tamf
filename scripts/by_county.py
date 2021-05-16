@@ -13,7 +13,7 @@ if __name__ == '__main__':
                                     new_grid_file)
         my_model = Model(new_grid_file, './data/new_route_assoc.pkl')
 
-        for h in Heuristic: # use each heuristic
+        for h in UtilityFunction: # use each heuristic
             routes = my_model.solve(1, h)
             out_file = f"./results/by_county/naive_{fips}_{h}_n=1.csv"
             my_model.filter_grid_by_route_ids(routes, out_file)

@@ -1,4 +1,9 @@
-from tamf.utility import *
+from tamf.model import *
+from tamf.analysis import *
+from tamf.driver import *
+
+# This is the "sanity check"
+# I want to show all the intermediate utility values per route
 
 if __name__ == '__main__':
     my_model = Model('./data/harding_and_union_grid_v2.csv',
@@ -6,14 +11,13 @@ if __name__ == '__main__':
     my_model.create_grid_category_bar_chart(
         './plots/harding_and_union_grid_category_bar_chart.png'
     )
-    print("NAIVE:")
-    results_naive = my_model.solve(-1, Heuristic.NAIVE)
-    result_file_naive = './results/grid_df_for_harding_and_union_counties_naive_n=-1.csv'
-    print("EOC_BINARY_DECISIONS:")
-    results_eoc = my_model.solve(-1, Heuristic.EOC_BINARY_DECISIONS)
-    result_file_eoc = './results/grid_df_for_harding_and_union_counties_eoc_n=-1.csv'
-    my_model.filter_grid_by_route_ids(results_naive, result_file_naive)
-    my_model.filter_grid_by_route_ids(results_eoc, result_file_eoc)
+    prefix = "./results/harding_and_union"
+    print("UNIQUE_BLOCKS:")
+    results_naive = my_model.solve(-1, Utility.UNIQUE_BLOCKS, f"{prefix}_naive_n=-1")
+    print("POPULATED_BLOCKS_W_CONFLICT:")
+    results_eoc = my_model.solve(-1, Utility.POPULATED_BLOCKS_W_CONFLICT, f"{prefix}_eoc_n=-1")
+    my_model.filter_grid_by_route_ids(results_naive, f"{prefix}_naive_n=-1_grid.csv")
+    my_model.filter_grid_by_route_ids(results_eoc, f"{prefix}_eoc_n=-1_grid.csv")
     my_model.print_grid_category_counts()
     print(f"kendalltau results: {perform_kendalltau(results_naive, results_eoc)}")
     print("Done!")
