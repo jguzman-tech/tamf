@@ -3,6 +3,8 @@ import scipy.stats
 from pathlib import Path
 import os
 import seaborn as sns
+from ast import literal_eval
+import numpy as np
 
 def create_routes_per_county_cdf():
     # will add these counts to the summary
@@ -325,22 +327,20 @@ def jaccard(list1, list2):
     denominator = float(len(set(list1).union(list2)))
     return numerator / denominator
 
-def create_jaccard_similarity_matrix(version):
+# only considering U1-U4 for now
+def create_jaccard_similarity_matrix():
     nm_county_fips = ['011', '035', '003', '059', '047', '055', '017', '007', '043', '006', '013', '021', '023', '053', '028', '033', '015', '009', '041', '045', '027', '019', '057', '029', '031', '039', '025', '005', '049', '037', '001', '051', '061']
     cellText = []
-    if version == 1:
-        n = 5
-    elif version == 2:
-        n = 10
-    else:
-        raise Exception(f"Unexpected version #{version}")
-    df = pd.DataFrame(columns=['County FIPS', 'U1 x U2', 'U1 x U3'])
+    n = "10%"
+    df = pd.DataFrame(columns=['County FIPS', 'U1 x U2', 'U1 x U3', 'U1 x U4', 'U2 x U3', 'U2 x U4', 'U3 x U4'])
     for fips in nm_county_fips:
         row = []
         # format: util_dict['UX'] = [selected_routes]
         util_dict = dict()
         count = 0
         for util in Utility:
+            if util not in {Utility.NAIVE, Utility.POPULATED_BLOCKS, Utility.POPULATED_BLOCKS_W_CONFLICT, Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT}:
+                continue
             lines = open(f'./results/by_county/{n}/{fips}_{util}_route_ids.txt', 'r').readlines()
             lines = [line.strip() for line in lines]
             count += 1
@@ -348,27 +348,35 @@ def create_jaccard_similarity_matrix(version):
         row.append(fips)
         row.append(jaccard(util_dict['U1'], util_dict['U2']))
         row.append(jaccard(util_dict['U1'], util_dict['U3']))
+        row.append(jaccard(util_dict['U1'], util_dict['U4']))
+        row.append(jaccard(util_dict['U2'], util_dict['U3']))
+        row.append(jaccard(util_dict['U2'], util_dict['U4']))
+        row.append(jaccard(util_dict['U3'], util_dict['U4']))
         df.loc[len(df)] = row
     # include the state
     for util in Utility:
         # file ex: ./results/state_wide/132/Utility.UNIQUE_BLOCKS_route_ids.txt
-        if version == 1:
-            lines = open(f'./results/state_wide/13/{util}_route_ids.txt', 'r').readlines()
-        elif 
+        if util not in {Utility.NAIVE, Utility.POPULATED_BLOCKS, Utility.POPULATED_BLOCKS_W_CONFLICT, Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT}:
+            continue
+        lines = open(f'./results/state_wide/{n}/{util}_route_ids.txt', 'r').readlines()
         lines = [line.strip() for line in lines]
         count += 1
         util_dict[f"U{count}"] = lines
     row = []
-    row.append("STATE-WIDE (n=13)")
+    row.append("STATE-WIDE")
     row.append(jaccard(util_dict['U1'], util_dict['U2']))
     row.append(jaccard(util_dict['U1'], util_dict['U3']))
+    row.append(jaccard(util_dict['U1'], util_dict['U4']))
+    row.append(jaccard(util_dict['U2'], util_dict['U3']))
+    row.append(jaccard(util_dict['U2'], util_dict['U4']))
+    row.append(jaccard(util_dict['U3'], util_dict['U4']))
     df.loc[len(df)] = row
     # df = pd.DataFrame(cellText, columns=colLabels)
     df = df.set_index('County FIPS')
     fig(figsize=(12, 10))
     sns.heatmap(df, annot=True, cmap='Greys')
-    plt.title(f'Jaccard Heatmap (n={5})')
-    plot_file = f'./plots/by_county/jaccard_table_v{version}.png'
+    plt.title(f'Jaccard Heatmap (n={n})')
+    plot_file = f'./plots/jaccard_heatmap.png'
     plt.savefig(plot_file)
     print(f"wrote: {plot_file}")
     plt.clf()
@@ -647,3 +655,185 @@ def create_line_plots():
     plt.savefig(plot_file)
     print(f"wrote: {plot_file}")
 
+# plots histograms across utilities (U1-U4) for the state-wide case
+def plot_utility_distributions():
+    distributions = dict()
+
+    # U1
+    fp = open('./results/state_wide/-1/Utility.NAIVE_utility_scores.txt', 'r')
+    utility_dict = literal_eval(fp.readline())
+    utility_scores = list(utility_dict.values())
+    distributions['U1'] = utility_scores
+
+    # U2
+    fp = open('./results/state_wide/-1/Utility.POPULATED_BLOCKS_utility_scores.txt', 'r')
+    utility_dict = literal_eval(fp.readline())
+    utility_scores = list(utility_dict.values())
+    distributions['U2'] = utility_scores
+
+    # U3
+    fp = open('./results/state_wide/-1/Utility.POPULATED_BLOCKS_W_CONFLICT_utility_scores.txt', 'r')
+    utility_dict = literal_eval(fp.readline())
+    utility_scores = list(utility_dict.values())
+    distributions['U3'] = utility_scores    
+
+    # U4
+    fp = open('./results/state_wide/-1/Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT_utility_scores.txt', 'r')
+    utility_dict = literal_eval(fp.readline())
+    utility_scores = list(utility_dict.values())
+    distributions['U4'] = utility_scores
+    
+    plt.hist(distributions['U1'], 50, alpha=0.6, log=True, label="U1", histtype='stepfilled')
+    plt.hist(distributions['U2'], 50, alpha=0.6, log=True, label="U2", histtype='stepfilled')
+    plt.hist(distributions['U3'], 50, alpha=0.6, log=True, label="U3", histtype='stepfilled')
+    plt.hist(distributions['U4'], 50, alpha=0.6, log=True, label="U4", histtype='stepfilled')
+    plt.legend()
+    plot_file = "./plots/utility_distributions.png"
+    plt.savefig(plot_file)
+    print(f"wrote: {plot_file}")
+
+def pearson1(mylist):
+    return (np.mean(mylist) - scipy.stats.mode(mylist).mode[0]) / np.std(mylist)
+
+def pearson2(mylist):
+    return 3.0*(np.mean(mylist) - np.median(mylist)) / np.std(mylist)
+
+# plots U4 histograms across low/med/high JS values
+# also prints skewness metrics
+def plot_js_distributions():
+    nm_county_fips = ['011', '035', '003', '059', '047', '055', '017', '007', '043', '006', '013', '021', '023', '053', '028', '033', '015', '009', '041', '045', '027', '019', '057', '029', '031', '039', '025', '005', '049', '037', '001', '051', '061']
+    n = "10%"
+    county_js_dict = dict()
+    county_util_scores = dict()
+    for fips in nm_county_fips:
+        row = []
+        # format: util_dict['UX'] = [selected_routes]
+        util_dict = dict()
+        count = 0
+        for util in Utility:
+            if util not in {Utility.NAIVE, Utility.POPULATED_BLOCKS, Utility.POPULATED_BLOCKS_W_CONFLICT, Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT}:
+                continue
+            lines = open(f'./results/by_county/{n}/{fips}_{util}_route_ids.txt', 'r').readlines()
+            lines = [line.strip() for line in lines]
+            count += 1
+            util_dict[f"U{count}"] = lines
+        county_js_dict[fips] = 0
+        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U2'])
+        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U3'])
+        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U4'])
+        county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U3'])
+        county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U4'])
+        county_js_dict[fips] += jaccard(util_dict['U3'], util_dict['U4'])
+
+        fp = open(f'./results/by_county/-1/{fips}_Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT_utility_scores.txt', 'r')
+        utility_dict = literal_eval(fp.readline())
+        utility_scores = list(utility_dict.values())
+        county_util_scores[fips] = utility_scores
+
+    mysorted = sorted(county_js_dict.items(), key=lambda x: x[1])
+    low_js_fips = set([fips for (fips, js_sum) in mysorted][0:11])
+    med_js_fips = set([fips for (fips, js_sum) in mysorted][11:22])
+    high_js_fips = set([fips for (fips, js_sum) in mysorted][22:])
+
+    low_js_util_scores = []
+    med_js_util_scores = []
+    high_js_util_scores = []
+    for (fips, util_scores) in county_util_scores.items():
+        if fips in low_js_fips:
+            low_js_util_scores += util_scores
+        elif fips in med_js_fips:
+            med_js_util_scores += util_scores
+        elif fips in high_js_fips:
+            high_js_util_scores += util_scores
+
+    # display skewness coefficients
+    print(f"low js Fisher-Pearson skew: {scipy.stats.skew(low_js_util_scores)}")
+    print(f"medium js Fisher-Pearson skew: {scipy.stats.skew(med_js_util_scores)}")
+    print(f"high js Fisher-Pearson skew: {scipy.stats.skew(high_js_util_scores)}")
+    print("")
+    print(f"low js Pearson's First skewness coeff: {pearson1(low_js_util_scores)}")
+    print(f"med js Pearson's First skewness coeff: {pearson1(med_js_util_scores)}")
+    print(f"high js Pearson's First skewness coeff: {pearson1(high_js_util_scores)}")
+    print("")
+    print(f"low js Pearson's Second skewness coeff: {pearson2(low_js_util_scores)}")
+    print(f"med js Pearson's Second skewness coeff: {pearson2(med_js_util_scores)}")
+    print(f"high js Pearson's Second skewness coeff: {pearson2(high_js_util_scores)}")
+    print("")
+
+    plt.hist(low_js_util_scores, 20, alpha=0.7, log=True, label="low JS", histtype='stepfilled', color="#e41a1c")
+    plt.hist(med_js_util_scores, 20, alpha=0.7, log=True, label="medium JS", histtype='stepfilled', color="#377eb8")
+    plt.hist(high_js_util_scores, 20, alpha=0.7, log=True, label="high JS", histtype='stepfilled', color="#4daf4a")
+    plt.legend()
+    plot_file = "./plots/js_distributions.png"
+    plt.savefig(plot_file)
+    print(f"wrote: {plot_file}")
+
+# plots histograms of route length across low/med/high JS values
+# also prints skewness metrics
+def plot_js_length_distributions():
+    nm_county_fips = ['011', '035', '003', '059', '047', '055', '017', '007', '043', '006', '013', '021', '023', '053', '028', '033', '015', '009', '041', '045', '027', '019', '057', '029', '031', '039', '025', '005', '049', '037', '001', '051', '061']
+    n = "10%"
+    county_js_dict = dict()
+    county_util_scores = dict()
+    for fips in nm_county_fips:
+        row = []
+        # format: util_dict['UX'] = [selected_routes]
+        util_dict = dict()
+        count = 0
+        for util in Utility:
+            if util not in {Utility.NAIVE, Utility.POPULATED_BLOCKS, Utility.POPULATED_BLOCKS_W_CONFLICT, Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT}:
+                continue
+            lines = open(f'./results/by_county/{n}/{fips}_{util}_route_ids.txt', 'r').readlines()
+            lines = [line.strip() for line in lines]
+            count += 1
+            util_dict[f"U{count}"] = lines
+        county_js_dict[fips] = 0
+        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U2'])
+        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U3'])
+        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U4'])
+        county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U3'])
+        county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U4'])
+        county_js_dict[fips] += jaccard(util_dict['U3'], util_dict['U4'])
+
+        fp = open(f'./results/by_county/-1/{fips}_Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT_utility_scores.txt', 'r')
+        utility_dict = literal_eval(fp.readline())
+        utility_scores = list(utility_dict.values())
+        county_util_scores[fips] = utility_scores
+
+    mysorted = sorted(county_js_dict.items(), key=lambda x: x[1])
+    low_js_fips = set([fips for (fips, js_sum) in mysorted][0:11])
+    med_js_fips = set([fips for (fips, js_sum) in mysorted][11:22])
+    high_js_fips = set([fips for (fips, js_sum) in mysorted][22:])
+
+    low_js_util_scores = []
+    med_js_util_scores = []
+    high_js_util_scores = []
+    for (fips, util_scores) in county_util_scores.items():
+        if fips in low_js_fips:
+            low_js_util_scores += util_scores
+        elif fips in med_js_fips:
+            med_js_util_scores += util_scores
+        elif fips in high_js_fips:
+            high_js_util_scores += util_scores
+
+    # display skewness coefficients
+    print(f"low js Fisher-Pearson skew: {scipy.stats.skew(low_js_util_scores)}")
+    print(f"medium js Fisher-Pearson skew: {scipy.stats.skew(med_js_util_scores)}")
+    print(f"high js Fisher-Pearson skew: {scipy.stats.skew(high_js_util_scores)}")
+    print("")
+    print(f"low js Pearson's First skewness coeff: {pearson1(low_js_util_scores)}")
+    print(f"med js Pearson's First skewness coeff: {pearson1(med_js_util_scores)}")
+    print(f"high js Pearson's First skewness coeff: {pearson1(high_js_util_scores)}")
+    print("")
+    print(f"low js Pearson's Second skewness coeff: {pearson2(low_js_util_scores)}")
+    print(f"med js Pearson's Second skewness coeff: {pearson2(med_js_util_scores)}")
+    print(f"high js Pearson's Second skewness coeff: {pearson2(high_js_util_scores)}")
+    print("")
+
+    plt.hist(low_js_util_scores, 20, alpha=0.7, log=True, label="low JS", histtype='stepfilled', color="#e41a1c")
+    plt.hist(med_js_util_scores, 20, alpha=0.7, log=True, label="medium JS", histtype='stepfilled', color="#377eb8")
+    plt.hist(high_js_util_scores, 20, alpha=0.7, log=True, label="high JS", histtype='stepfilled', color="#4daf4a")
+    plt.legend()
+    plot_file = "./plots/js_distributions.png"
+    plt.savefig(plot_file)
+    print(f"wrote: {plot_file}")
