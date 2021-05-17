@@ -15,12 +15,13 @@ import geopandas as gpd
 import shapely
 from shapely.ops import cascaded_union
 import os
+import math
 
 import matplotlib as mpl
 mpl.rcParams['figure.dpi'] = 300
 
 class Utility(Enum):
-    UNIQUE_BLOCKS = 1
+    NAIVE = 1
     POPULATED_BLOCKS = 2
     POPULATED_BLOCKS_W_CONFLICT = 3
     POPULATED_BLOCKS_W_SCALED_CONFLICT = 4
@@ -93,7 +94,7 @@ class Model():
                 if grid_id not in prev_grid_ids:
                     utility_dict[route_id] += func(inner_dict)
         return utility_dict
-    def utility_unique_blocks(self, inner_dict):
+    def utility_naive(self, inner_dict):
         return 1
     def utility_populated_blocks(self, inner_dict):
         if inner_dict['POP10'] > 0.0:
@@ -192,9 +193,13 @@ class Model():
             new_df.loc[len(new_df)] = grid_dict[grid_id]
         new_df.to_csv(out_file, index=False, sep="|")
         print(f"wrote: {out_file}")
+    # Will accept three kinds of n values
+    # (int) x: the number of routes to select
+    # (int)-1: indicates selecting all routes
+    # (str) "x%": indicates selecting x% of all routes, used inclusively
     def solve(self, n, func, prefix, debug=True):
-        if func == Utility.UNIQUE_BLOCKS:
-            func = self.utility_unique_blocks
+        if func == Utility.NAIVE:
+            func = self.utility_naive
         elif func == Utility.POPULATED_BLOCKS:
             func = self.utility_populated_blocks
         elif func == Utility.POPULATED_BLOCKS_W_CONFLICT:
@@ -211,7 +216,9 @@ class Model():
         route_fp = open(f"{prefix}_route_ids.txt", "w")
         count = 0
         route_assoc = copy.deepcopy(self.filtered_route_assoc)
-        if n == -1:
+        if isinstance(n, str) and n[-1] == "%":
+            n = math.ceil(len(route_assoc) * (float(n[0:-1]) / 100.0))
+        elif n == -1:
             n = len(route_assoc)
         elif n > len(route_assoc):
             n = len(route_assoc)

@@ -5,7 +5,7 @@ def run_by_county(selected_util=None):
     Path("./results").mkdir(parents=True, exist_ok=True)
     Path("./results/by_county").mkdir(parents=True, exist_ok=True)
     # -1 means all, needed for kendall tau later
-    n_values = [-1, 1, 5, 10]
+    n_values = [-1, "10%"]
     nm_county_fips = ['011', '035', '003', '059', '047', '055', '017', '007', '043', '006', '013', '021', '023', '053', '028', '033', '015', '009', '041', '045', '027', '019', '057', '029', '031', '039', '025', '005', '049', '037', '001', '051', '061']
     count = 0
     total = len(nm_county_fips) * len(n_values) * len(Utility)
@@ -30,9 +30,8 @@ def run_by_county(selected_util=None):
 
 def run_state_wide(selected_util=None):
     # we have 1321 routes in all
-    # so 1% = 13, 5% = 66, 10% = 132
     # -1 means all, needed for kendall tau later
-    n_values = [-1, 13, 66, 132]
+    n_values = [-1, "10%"]
     Path("./results").mkdir(parents=True, exist_ok=True)
     Path("./results/state_wide").mkdir(parents=True, exist_ok=True)
     count = 0
