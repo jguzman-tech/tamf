@@ -5,6 +5,7 @@ import os
 import seaborn as sns
 from ast import literal_eval
 import numpy as np
+import matplotlib
 
 def create_routes_per_county_cdf():
     # will add these counts to the summary
@@ -328,11 +329,11 @@ def jaccard(list1, list2):
     return numerator / denominator
 
 # only considering U1-U4 for now
-def create_jaccard_similarity_matrix():
+def create_jaccard_similarity_heatmap():
     nm_county_fips = ['011', '035', '003', '059', '047', '055', '017', '007', '043', '006', '013', '021', '023', '053', '028', '033', '015', '009', '041', '045', '027', '019', '057', '029', '031', '039', '025', '005', '049', '037', '001', '051', '061']
     cellText = []
     n = "10%"
-    df = pd.DataFrame(columns=['County FIPS', 'U1 x U2', 'U1 x U3', 'U1 x U4', 'U2 x U3', 'U2 x U4', 'U3 x U4'])
+    df = pd.DataFrame(columns=['County FIPS', 'U1 x U2', 'U1 x U3', 'U2 x U3'])
     for fips in nm_county_fips:
         row = []
         # format: util_dict['UX'] = [selected_routes]
@@ -348,10 +349,7 @@ def create_jaccard_similarity_matrix():
         row.append(fips)
         row.append(jaccard(util_dict['U1'], util_dict['U2']))
         row.append(jaccard(util_dict['U1'], util_dict['U3']))
-        row.append(jaccard(util_dict['U1'], util_dict['U4']))
         row.append(jaccard(util_dict['U2'], util_dict['U3']))
-        row.append(jaccard(util_dict['U2'], util_dict['U4']))
-        row.append(jaccard(util_dict['U3'], util_dict['U4']))
         df.loc[len(df)] = row
     # include the state
     for util in Utility:
@@ -366,10 +364,7 @@ def create_jaccard_similarity_matrix():
     row.append("STATE-WIDE")
     row.append(jaccard(util_dict['U1'], util_dict['U2']))
     row.append(jaccard(util_dict['U1'], util_dict['U3']))
-    row.append(jaccard(util_dict['U1'], util_dict['U4']))
     row.append(jaccard(util_dict['U2'], util_dict['U3']))
-    row.append(jaccard(util_dict['U2'], util_dict['U4']))
-    row.append(jaccard(util_dict['U3'], util_dict['U4']))
     df.loc[len(df)] = row
     # df = pd.DataFrame(cellText, columns=colLabels)
     df = df.set_index('County FIPS')
@@ -698,9 +693,9 @@ def pearson1(mylist):
 def pearson2(mylist):
     return 3.0*(np.mean(mylist) - np.median(mylist)) / np.std(mylist)
 
-# plots U4 histograms across low/med/high JS values
+# plots histograms across low/med/high JS values for the utility passed as an arg
 # also prints skewness metrics
-def plot_js_distributions():
+def plot_js_distributions(U):
     nm_county_fips = ['011', '035', '003', '059', '047', '055', '017', '007', '043', '006', '013', '021', '023', '053', '028', '033', '015', '009', '041', '045', '027', '019', '057', '029', '031', '039', '025', '005', '049', '037', '001', '051', '061']
     n = "10%"
     county_js_dict = dict()
@@ -720,20 +715,37 @@ def plot_js_distributions():
         county_js_dict[fips] = 0
         county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U2'])
         county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U3'])
-        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U4'])
         county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U3'])
-        county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U4'])
-        county_js_dict[fips] += jaccard(util_dict['U3'], util_dict['U4'])
 
-        fp = open(f'./results/by_county/-1/{fips}_Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT_utility_scores.txt', 'r')
+        fp = open(f'./results/by_county/-1/{fips}_{U}_utility_scores.txt', 'r')
         utility_dict = literal_eval(fp.readline())
         utility_scores = list(utility_dict.values())
         county_util_scores[fips] = utility_scores
 
-    mysorted = sorted(county_js_dict.items(), key=lambda x: x[1])
-    low_js_fips = set([fips for (fips, js_sum) in mysorted][0:11])
-    med_js_fips = set([fips for (fips, js_sum) in mysorted][11:22])
-    high_js_fips = set([fips for (fips, js_sum) in mysorted][22:])
+    zscores = scipy.stats.zscore(list(county_js_dict.values()))
+    low_keys = set()
+    med_keys = set()
+    high_keys = set()
+    # I've run this a few times on the NM dataset
+    # I know that we want these groups:
+    # low: bottom 2 counties by z-score
+    # med: the middle 18 counties by z-score
+    # high: the highest 13 counties by z-score
+    #       these all have the same z-score of 1.15
+    for i in range(len(zscores)):
+        if zscores[i] < -1.5:
+            low_keys.add(list(county_js_dict.keys())[i])
+        elif zscores[i] == zscores.max():
+            high_keys.add(list(county_js_dict.keys())[i])
+        else:
+            med_keys.add(list(county_js_dict.keys())[i])
+        
+    low_js_fips = set([fips for (fips, js_sum) in county_js_dict.items() \
+                       if fips in low_keys])
+    med_js_fips = set([fips for (fips, js_sum) in county_js_dict.items() \
+                      if fips in med_keys])
+    high_js_fips = set([fips for (fips, js_sum) in county_js_dict.items() \
+                        if fips in high_keys])
 
     low_js_util_scores = []
     med_js_util_scores = []
@@ -760,21 +772,39 @@ def plot_js_distributions():
     print(f"high js Pearson's Second skewness coeff: {pearson2(high_js_util_scores)}")
     print("")
 
-    plt.hist(low_js_util_scores, 20, alpha=0.7, log=True, label="low JS", histtype='stepfilled', color="#e41a1c")
-    plt.hist(med_js_util_scores, 20, alpha=0.7, log=True, label="medium JS", histtype='stepfilled', color="#377eb8")
-    plt.hist(high_js_util_scores, 20, alpha=0.7, log=True, label="high JS", histtype='stepfilled', color="#4daf4a")
+    fig, ax = plt.subplots()
+    ax.set_xscale('log')
+
+    x = sorted(low_js_util_scores)
+    y = np.arange(len(x)) / (len(x)-1)
+    assert np.isclose(y[-1], 1.0), "CDF doesn't end at 1.0"
+    ax.plot(x, y, label="Low JS Counties", color="#e41a1c")
+
+    x = sorted(med_js_util_scores)
+    y = np.arange(len(x)) / (len(x)-1)
+    assert np.isclose(y[-1], 1.0), "CDF doesn't end at 1.0"
+    ax.plot(x, y, label="Medium JS Counties", color="#377eb8")
+
+    x = sorted(high_js_util_scores)
+    y = np.arange(len(x)) / (len(x)-1)
+    assert np.isclose(y[-1], 1.0), "CDF doesn't end at 1.0"
+    ax.plot(x, y, label="High JS Counties", color="#4daf4a")
+
+    plt.xlabel(f"Utility Score (U{U.value})")
+    plt.ylabel(f"Probabillity")
     plt.legend()
-    plot_file = "./plots/js_distributions.png"
+    plt.title(f"CDF of Route Utility Scores (U{U.value}) Counties Grouped by JS Score")
+    plot_file = f"./plots/js_distributions_U{U.value}.png"
     plt.savefig(plot_file)
     print(f"wrote: {plot_file}")
+    plt.clf()
 
-# plots histograms of route length across low/med/high JS values
-# also prints skewness metrics
-def plot_js_length_distributions():
+# will print the avg overlap percentages across the low/med/high JS counties
+def print_overlap():
     nm_county_fips = ['011', '035', '003', '059', '047', '055', '017', '007', '043', '006', '013', '021', '023', '053', '028', '033', '015', '009', '041', '045', '027', '019', '057', '029', '031', '039', '025', '005', '049', '037', '001', '051', '061']
     n = "10%"
     county_js_dict = dict()
-    county_util_scores = dict()
+    county_overlap_percentages = dict()
     for fips in nm_county_fips:
         row = []
         # format: util_dict['UX'] = [selected_routes]
@@ -790,20 +820,116 @@ def plot_js_length_distributions():
         county_js_dict[fips] = 0
         county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U2'])
         county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U3'])
-        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U4'])
         county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U3'])
-        county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U4'])
-        county_js_dict[fips] += jaccard(util_dict['U3'], util_dict['U4'])
 
-        fp = open(f'./results/by_county/-1/{fips}_Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT_utility_scores.txt', 'r')
-        utility_dict = literal_eval(fp.readline())
-        utility_scores = list(utility_dict.values())
-        county_util_scores[fips] = utility_scores
+        df = pd.read_csv(f"./results/by_county/-1/{fips}_Utility.NAIVE_grid.csv", sep='|')
+        percentage = 100 * len(df[df['route_ids'].str.contains(',')])/(len(df))
+        county_overlap_percentages[fips] = percentage
 
     mysorted = sorted(county_js_dict.items(), key=lambda x: x[1])
     low_js_fips = set([fips for (fips, js_sum) in mysorted][0:11])
     med_js_fips = set([fips for (fips, js_sum) in mysorted][11:22])
     high_js_fips = set([fips for (fips, js_sum) in mysorted][22:])
+
+    low_js_overlap_percentages = []
+    med_js_overlap_percentages = []
+    high_js_overlap_percentages = []
+    for (fips, overlap_percentage) in county_overlap_percentages.items():
+        if fips in low_js_fips:
+            low_js_overlap_percentages.append(overlap_percentage)
+        elif fips in med_js_fips:
+            med_js_overlap_percentages.append(overlap_percentage)
+        elif fips in high_js_fips:
+            high_js_overlap_percentages.append(overlap_percentage)
+
+    print(f"low js avg overlap %-age: {np.mean(low_js_overlap_percentages)}")
+    print(f"med js avg overlap %-age: {np.mean(med_js_overlap_percentages)}")
+    print(f"high js avg overlap %-age: {np.mean(high_js_overlap_percentages)}")
+
+# This function will print out all of the values we used in the paper's table
+# The table will have three rows, one for each JS group
+# These are the metrics that Morgan said we should have:
+# 1. SK1 for route length
+# 2. Median of route length
+# 3. std dev of route length
+# 4. median of population density
+# 5. std dev of population density
+# 6. % of route tiles on populated blocks
+# 7. % of county blocks covered by route blocks
+def print_table_values():
+    nm_county_fips = ['011', '035', '003', '059', '047', '055', '017', '007', '043', '006', '013', '021', '023', '053', '028', '033', '015', '009', '041', '045', '027', '019', '057', '029', '031', '039', '025', '005', '049', '037', '001', '051', '061']
+    n = "10%"
+    U = Utility.NAIVE
+    # not using the grid data because it may be slightly inaccurate for population density
+    tract_gdf = gpd.read_file('./data/tl_2019_us_county.shp')
+    population_gdf = gpd.read_file('./data/2010_census/tabblock2010_35_pophu.shp')
+    county_js_dict = dict()
+    county_util_scores = dict()
+    county_pop_densities = dict()
+    county_pop_route_percent = dict() # "% of route tiles on populated blocks"
+    county_route_coverage = dict() # "% of county blocks covered by route blocks"
+    for fips in nm_county_fips:
+        row = []
+        # format: util_dict['UX'] = [selected_routes]
+        util_dict = dict()
+        count = 0
+        for util in Utility:
+            if util not in {Utility.NAIVE, Utility.POPULATED_BLOCKS, Utility.POPULATED_BLOCKS_W_CONFLICT, Utility.POPULATED_BLOCKS_W_SCALED_CONFLICT}:
+                continue
+            lines = open(f'./results/by_county/{n}/{fips}_{util}_route_ids.txt', 'r').readlines()
+            lines = [line.strip() for line in lines]
+            count += 1
+            util_dict[f"U{count}"] = lines
+        county_js_dict[fips] = 0
+        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U2'])
+        county_js_dict[fips] += jaccard(util_dict['U1'], util_dict['U3'])
+        county_js_dict[fips] += jaccard(util_dict['U2'], util_dict['U3'])
+        fp = open(f'./results/by_county/-1/{fips}_{U}_utility_scores.txt', 'r')
+        utility_dict = literal_eval(fp.readline())
+        utility_scores = list(utility_dict.values())
+        county_util_scores[fips] = utility_scores
+        county_pop_densities[fips] = population_gdf['POP10'][population_gdf['COUNTYFP10'] == fips].sum() / (tract_gdf['ALAND'][(tract_gdf['STATEFP'] == '35') & (tract_gdf['COUNTYFP'] == fips)].sum() / (10.0**6))
+        county_grid_df = pd.read_csv(f"./data/by_county/{fips}.csv", sep="|")
+        county_route_df = pd.read_csv(f"./results/by_county/-1/{fips}_Utility.NAIVE_grid.csv", sep="|")
+        x = set(county_grid_df['id'].to_list())
+        y = set(county_route_df['id'].to_list())
+        z = y - x
+        # z is a set containing elements that we don't want to keep
+        # z contains grid block ids, of the portions of routes that lie outside
+        # the county
+        # when a route is partially in a county, we count it as totally in
+        # because are cannot select a partial route
+        myfilter = county_route_df['id'].isin(z)
+        county_route_df = county_route_df[~myfilter].reset_index(drop=True)
+        # "% of route tiles on populated blocks"
+        county_pop_route_percent[fips] = 100.0 * (len(county_route_df[county_route_df['POP10'] > 0.0])/len(county_route_df))
+        # "% of county blocks covered by route blocks"
+        county_route_coverage[fips] = 100.0 * (len(county_route_df)/(len(county_grid_df)))
+
+    zscores = scipy.stats.zscore(list(county_js_dict.values()))
+    low_keys = set()
+    med_keys = set()
+    high_keys = set()
+    # I've run this a few times on the NM dataset
+    # I know that we want these groups:
+    # low: bottom 2 counties by z-score
+    # med: the middle 18 counties by z-score
+    # high: the highest 13 counties by z-score
+    #       these all have the same z-score of 1.15
+    for i in range(len(zscores)):
+        if zscores[i] < -1.5:
+            low_keys.add(list(county_js_dict.keys())[i])
+        elif zscores[i] == zscores.max():
+            high_keys.add(list(county_js_dict.keys())[i])
+        else:
+            med_keys.add(list(county_js_dict.keys())[i])
+        
+    low_js_fips = set([fips for (fips, js_sum) in county_js_dict.items() \
+                       if fips in low_keys])
+    med_js_fips = set([fips for (fips, js_sum) in county_js_dict.items() \
+                      if fips in med_keys])
+    high_js_fips = set([fips for (fips, js_sum) in county_js_dict.items() \
+                        if fips in high_keys])
 
     low_js_util_scores = []
     med_js_util_scores = []
@@ -816,24 +942,77 @@ def plot_js_length_distributions():
         elif fips in high_js_fips:
             high_js_util_scores += util_scores
 
-    # display skewness coefficients
-    print(f"low js Fisher-Pearson skew: {scipy.stats.skew(low_js_util_scores)}")
-    print(f"medium js Fisher-Pearson skew: {scipy.stats.skew(med_js_util_scores)}")
-    print(f"high js Fisher-Pearson skew: {scipy.stats.skew(high_js_util_scores)}")
-    print("")
-    print(f"low js Pearson's First skewness coeff: {pearson1(low_js_util_scores)}")
-    print(f"med js Pearson's First skewness coeff: {pearson1(med_js_util_scores)}")
-    print(f"high js Pearson's First skewness coeff: {pearson1(high_js_util_scores)}")
-    print("")
-    print(f"low js Pearson's Second skewness coeff: {pearson2(low_js_util_scores)}")
-    print(f"med js Pearson's Second skewness coeff: {pearson2(med_js_util_scores)}")
-    print(f"high js Pearson's Second skewness coeff: {pearson2(high_js_util_scores)}")
-    print("")
+    low_js_pop_densities = []
+    med_js_pop_densities = []
+    high_js_pop_densities = []
+    for (fips, density) in county_pop_densities.items():
+        if fips in low_js_fips:
+            low_js_pop_densities.append(density)
+        elif fips in med_js_fips:
+            med_js_pop_densities.append(density)
+        elif fips in high_js_fips:
+            high_js_pop_densities.append(density)
 
-    plt.hist(low_js_util_scores, 20, alpha=0.7, log=True, label="low JS", histtype='stepfilled', color="#e41a1c")
-    plt.hist(med_js_util_scores, 20, alpha=0.7, log=True, label="medium JS", histtype='stepfilled', color="#377eb8")
-    plt.hist(high_js_util_scores, 20, alpha=0.7, log=True, label="high JS", histtype='stepfilled', color="#4daf4a")
-    plt.legend()
-    plot_file = "./plots/js_distributions.png"
-    plt.savefig(plot_file)
-    print(f"wrote: {plot_file}")
+    low_js_pop_route_percent = []
+    med_js_pop_route_percent = []
+    high_js_pop_route_percent = []
+    for (fips, percent) in county_pop_route_percent.items():
+        if fips in low_js_fips:
+            low_js_pop_route_percent.append(percent)
+        elif fips in med_js_fips:
+            med_js_pop_route_percent.append(percent)
+        elif fips in high_js_fips:
+            high_js_pop_route_percent.append(percent)
+
+    low_js_route_coverage = []
+    med_js_route_coverage = []
+    high_js_route_coverage = []
+    for (fips, coverage) in county_route_coverage.items():
+        if fips in low_js_fips:
+            low_js_route_coverage.append(coverage)
+        elif fips in med_js_fips:
+            med_js_route_coverage.append(coverage)
+        elif fips in high_js_fips:
+            high_js_route_coverage.append(coverage)
+
+    table_values = dict()
+    table_values['low'] = []
+    table_values['med'] = []
+    table_values['high'] = []
+
+    # 1. SK1
+    table_values['low'].append(pearson1(low_js_util_scores))
+    table_values['med'].append(pearson1(med_js_util_scores))
+    table_values['high'].append(pearson1(high_js_util_scores))
+
+    # 2. median of route length
+    table_values['low'].append(np.median(low_js_util_scores))
+    table_values['med'].append(np.median(med_js_util_scores))
+    table_values['high'].append(np.median(high_js_util_scores))
+
+    # 3. std of route length
+    table_values['low'].append(np.std(low_js_util_scores))
+    table_values['med'].append(np.std(med_js_util_scores))
+    table_values['high'].append(np.std(high_js_util_scores))
+
+    # 4. median of population density
+    table_values['low'].append(np.mean(low_js_pop_densities))
+    table_values['med'].append(np.mean(med_js_pop_densities))
+    table_values['high'].append(np.mean(high_js_pop_densities))
+
+    # 5. std dev poulation density
+    table_values['low'].append(np.std(low_js_pop_densities))
+    table_values['med'].append(np.std(med_js_pop_densities))
+    table_values['high'].append(np.std(high_js_pop_densities))
+
+    # 6. %-age of route tiles on populated blocks
+    table_values['low'].append(np.std(low_js_pop_route_percent))
+    table_values['med'].append(np.std(med_js_pop_route_percent))
+    table_values['high'].append(np.std(high_js_pop_route_percent))
+
+    # 7. %-age of county blocks covered by route blocks
+    table_values['low'].append(np.std(low_js_route_coverage))
+    table_values['med'].append(np.std(med_js_route_coverage))
+    table_values['high'].append(np.std(high_js_route_coverage))
+
+    print(table_values)

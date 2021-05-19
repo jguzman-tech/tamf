@@ -11,7 +11,7 @@ if __name__ == '__main__':
     county_percentage_overlap = []
     for fips in nm_county_fips:
         # example fp: ./results/by_county/-1/061_Utility.UNIQUE_BLOCKS_grid.csv
-        df = pd.read_csv(f"./results/by_county/-1/{fips}_Utility.UNIQUE_BLOCKS_grid.csv", sep='|')
+        df = pd.read_csv(f"./results/by_county/-1/{fips}_Utility.NAIVE_grid.csv", sep='|')
         percentage = 100 * len(df[df['route_ids'].str.contains(',')])/(len(df))
         if percentage > 38:
             print("max: " + fips)
